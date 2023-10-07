@@ -2,23 +2,23 @@ import { type ReactNode, Suspense, useMemo } from "react";
 import { useActiveWallet } from "@coral-xyz/recoil";
 
 import { gql } from "../../apollo";
-import { type GetTransactionsQuery, ProviderId } from "../../apollo/graphql";
+import { ProviderId } from "../../apollo/graphql";
 import { usePolledSuspenseQuery } from "../../hooks";
 
 import type { ParseTransactionDetails } from "./parsing";
 import { TransactionList } from "./TransactionList";
-import { getGroupedTransactions } from "./utils";
+import { getGroupedTransactions, type ResponseTransaction } from "./utils";
 
-export type { ParseTransactionDetails } from "./parsing";
+export type { ParseTransactionDetails, ResponseTransaction };
 export * from "./TransactionDetails";
 
 const DEFAULT_POLLING_INTERVAL = 60000;
 
 const GET_TRANSACTIONS = gql(`
-  query GetTransactions($address: String!, $filters: TransactionFiltersInput) {
+  query GetTransactions($address: String!, $providerId: ProviderID!, $filters: TransactionFiltersInput) {
     user {
       id
-      wallet(address: $address) {
+      wallet(address: $address, providerId: $providerId) {
         id
         provider {
           providerId
@@ -43,12 +43,6 @@ const GET_TRANSACTIONS = gql(`
     }
   }
 `);
-
-export type ResponseTransaction = NonNullable<
-  NonNullable<
-    NonNullable<GetTransactionsQuery["user"]>["wallet"]
-  >["transactions"]
->["edges"][number]["node"];
 
 export type TransactionHistoryProps = {
   contractOrMint?: string;
@@ -82,6 +76,7 @@ function _TransactionHistory({
     {
       variables: {
         address: activeWallet.publicKey,
+        providerId: activeWallet.blockchain.toUpperCase() as ProviderId,
         filters: {
           token: contractOrMint,
         },

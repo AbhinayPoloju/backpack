@@ -1,30 +1,41 @@
-import { EthereumTokenList } from "@coral-xyz/common";
+import { type CustomTokenList, EthereumTokenList } from "@coral-xyz/common";
 import {
+  Alchemy,
+  type AlchemySettings,
   AssetTransfersCategory,
   type AssetTransfersParams,
   type AssetTransfersWithMetadataResponse,
+  Network,
   SortingOrder,
 } from "alchemy-sdk";
 import { ethers } from "ethers";
 
+import { ALCHEMY_API_KEY } from "../../../config";
 import type { CoinGeckoPriceData } from "../clients/coingecko";
 import type { ApiContext } from "../context";
 import { NodeBuilder } from "../nodes";
-import {
-  type BalanceFiltersInput,
-  type Balances,
-  type Nft,
-  type NftAttribute,
-  type NftConnection,
-  type NftFiltersInput,
-  ProviderId,
-  type TokenBalance,
-  type TransactionConnection,
-  type TransactionFiltersInput,
+import type {
+  BalanceFiltersInput,
+  Balances,
+  Nft,
+  NftAttribute,
+  NftConnection,
+  NftFiltersInput,
+  TokenBalance,
+  TransactionConnection,
+  TransactionFiltersInput,
 } from "../types";
+import { ProviderId } from "../types";
 import { calculateBalanceAggregate, createConnection } from "../utils";
 
 import type { BlockchainDataProvider } from ".";
+import { createMarketDataNode } from "./util";
+
+export type EthereumProviderSettings = {
+  context?: ApiContext;
+  customSdkConfig?: AlchemySettings;
+  tokenList?: CustomTokenList;
+};
 
 /**
  * Ethereum blockchain implementation for the common API.
@@ -33,10 +44,25 @@ import type { BlockchainDataProvider } from ".";
  * @implements {BlockchainDataProvider}
  */
 export class Ethereum implements BlockchainDataProvider {
-  readonly #ctx?: ApiContext;
+  protected readonly ctx?: ApiContext;
+  protected readonly sdk?: Alchemy;
+  protected readonly tokenList: CustomTokenList;
 
-  constructor(ctx?: ApiContext) {
-    this.#ctx = ctx;
+  constructor({
+    context,
+    customSdkConfig,
+    tokenList,
+  }: EthereumProviderSettings) {
+    this.ctx = context;
+    this.tokenList = tokenList ?? EthereumTokenList;
+    this.sdk = new Alchemy(
+      customSdkConfig ?? {
+        apiKey: ALCHEMY_API_KEY,
+        network: context?.network.devnet
+          ? Network.ETH_SEPOLIA
+          : Network.ETH_MAINNET,
+      }
+    );
   }
 
   /**
@@ -63,7 +89,7 @@ export class Ethereum implements BlockchainDataProvider {
    * @memberof Ethereum
    */
   defaultAddress(): string {
-    return "0x0000000000000000000000000000000000000000";
+    return this.tokenList.native.address;
   }
 
   /**
@@ -72,7 +98,7 @@ export class Ethereum implements BlockchainDataProvider {
    * @memberof Ethereum
    */
   logo(): string {
-    return EthereumTokenList[this.defaultAddress()].logo!;
+    return this.tokenList.native.logo!;
   }
 
   /**
@@ -82,15 +108,6 @@ export class Ethereum implements BlockchainDataProvider {
    */
   name(): string {
     return "Ethereum";
-  }
-
-  /**
-   * Symbol of the native coin.
-   * @returns {string}
-   * @memberof Ethereum
-   */
-  symbol(): string {
-    return "ETH";
   }
 
   /**
@@ -105,14 +122,14 @@ export class Ethereum implements BlockchainDataProvider {
     address: string,
     filters?: BalanceFiltersInput
   ): Promise<Balances> {
-    if (!this.#ctx) {
+    if (!this.ctx || !this.sdk) {
       throw new Error("API context object not available");
     }
 
     // Fetch the native and all token balances of the address and filter out the empty balances
     const [native, tokenBalances] = await Promise.all([
-      this.#ctx.dataSources.alchemy.core.getBalance(address),
-      this.#ctx.dataSources.alchemy.core.getTokensForOwner(address),
+      this.sdk.core.getBalance(address),
+      this.sdk.core.getTokensForOwner(address),
     ]);
 
     const nonEmptyTokens = tokenBalances.tokens.filter(
@@ -120,7 +137,7 @@ export class Ethereum implements BlockchainDataProvider {
     );
 
     const meta = nonEmptyTokens.reduce<Map<string, string>>((acc, curr) => {
-      const id = EthereumTokenList[curr.contractAddress];
+      const id = this.tokenList[curr.contractAddress];
       if (id && id.coingeckoId) {
         acc.set(curr.contractAddress, id.coingeckoId);
       }
@@ -129,7 +146,7 @@ export class Ethereum implements BlockchainDataProvider {
 
     // Get price data from Coingecko for the discovered tokens
     const ids = [...meta.values()];
-    const prices = await this.#ctx.dataSources.coinGecko.getPrices([
+    const prices = await this.ctx.dataSources.coinGecko.getPrices([
       "ethereum",
       ...ids,
     ]);
@@ -147,21 +164,13 @@ export class Ethereum implements BlockchainDataProvider {
         amount: native.toString(),
         decimals: this.decimals(),
         displayAmount: nativeDisplayAmount,
-        marketData: NodeBuilder.marketData("ethereum", {
-          lastUpdatedAt: prices.ethereum.last_updated,
-          percentChange: prices.ethereum.price_change_percentage_24h,
-          price: prices.ethereum.current_price,
-          sparkline: prices.ethereum.sparkline_in_7d.price,
-          usdChange: prices.ethereum.price_change_24h,
-          value:
-            parseFloat(nativeDisplayAmount) * prices.ethereum.current_price,
-          valueChange:
-            parseFloat(nativeDisplayAmount) * prices.ethereum.price_change_24h,
-        }),
-        token: this.defaultAddress(),
-        tokenListEntry: NodeBuilder.tokenListEntry(
-          EthereumTokenList[this.defaultAddress()]
+        marketData: createMarketDataNode(
+          nativeDisplayAmount,
+          "ethereum",
+          prices.ethereum
         ),
+        token: this.defaultAddress(),
+        tokenListEntry: NodeBuilder.tokenListEntry(this.tokenList["native"]),
       },
       true
     );
@@ -173,22 +182,10 @@ export class Ethereum implements BlockchainDataProvider {
 
       const amount = curr.rawBalance ?? "0";
       const displayAmount = curr.balance ?? "0";
+      const marketData = createMarketDataNode(displayAmount, id, p);
 
-      const marketData =
-        p && id
-          ? NodeBuilder.marketData(id, {
-              lastUpdatedAt: p.last_updated,
-              percentChange: p.price_change_percentage_24h,
-              price: p.current_price,
-              sparkline: p.sparkline_in_7d.price,
-              usdChange: p.price_change_24h,
-              value: parseFloat(displayAmount) * p.current_price,
-              valueChange: parseFloat(displayAmount) * p.price_change_24h,
-            })
-          : undefined;
-
-      const tokenListEntry = EthereumTokenList[curr.contractAddress]
-        ? NodeBuilder.tokenListEntry(EthereumTokenList[curr.contractAddress])
+      const tokenListEntry = this.tokenList[curr.contractAddress]
+        ? NodeBuilder.tokenListEntry(this.tokenList[curr.contractAddress])
         : undefined;
 
       if (filters?.marketListedTokensOnly && !marketData) {
@@ -236,15 +233,14 @@ export class Ethereum implements BlockchainDataProvider {
     address: string,
     filters?: NftFiltersInput
   ): Promise<NftConnection> {
-    if (!this.#ctx) {
+    if (!this.ctx || !this.sdk) {
       throw new Error("API context object not available");
     }
 
     // Get all NFTs held by the address from Alchemy
-    const nfts = await this.#ctx.dataSources.alchemy.nft.getNftsForOwner(
-      address,
-      { contractAddresses: filters?.addresses ?? undefined }
-    );
+    const nfts = await this.sdk.nft.getNftsForOwner(address, {
+      contractAddresses: filters?.addresses ?? undefined,
+    });
 
     // Return an array of `Nft` schema types after filtering out all
     // detected spam NFTs and mapping them with their possible collection data
@@ -300,7 +296,7 @@ export class Ethereum implements BlockchainDataProvider {
     address: string,
     filters?: TransactionFiltersInput
   ): Promise<TransactionConnection> {
-    if (!this.#ctx) {
+    if (!this.ctx || !this.sdk) {
       throw new Error("API context object not available");
     }
 
@@ -320,11 +316,11 @@ export class Ethereum implements BlockchainDataProvider {
     };
 
     const txs = await Promise.allSettled([
-      this.#ctx.dataSources.alchemy.core.getAssetTransfers({
+      this.sdk.core.getAssetTransfers({
         fromAddress: address,
         ...params,
       }) as Promise<AssetTransfersWithMetadataResponse>,
-      this.#ctx.dataSources.alchemy.core.getAssetTransfers({
+      this.sdk.core.getAssetTransfers({
         toAddress: address,
         ...params,
       }) as Promise<AssetTransfersWithMetadataResponse>,
@@ -337,9 +333,7 @@ export class Ethereum implements BlockchainDataProvider {
       .sort((a, b) => Number(b.blockNum) - Number(a.blockNum));
 
     const receipts = await Promise.all(
-      combined.map((tx) =>
-        this.#ctx!.dataSources.alchemy.core.getTransactionReceipt(tx.hash)
-      )
+      combined.map((tx) => this.sdk!.core.getTransactionReceipt(tx.hash))
     );
 
     const nodes = combined.map((tx, i) => {
@@ -357,10 +351,10 @@ export class Ethereum implements BlockchainDataProvider {
           block: Number(tx.blockNum),
           fee:
             receipts[i]?.gasUsed && receipts[i]?.effectiveGasPrice
-              ? `${ethers.utils.formatUnits(
+              ? ethers.utils.formatUnits(
                   receipts[i]!.gasUsed.mul(receipts[i]!.effectiveGasPrice),
                   this.decimals()
-                )} ${this.symbol()}`
+                )
               : undefined,
           feePayer: tx.from,
           hash: tx.hash,

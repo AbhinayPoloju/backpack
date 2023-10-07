@@ -2,20 +2,21 @@ import { Chain } from "@coral-xyz/zeus";
 import { GraphQLError } from "graphql";
 
 import { NodeBuilder } from "../nodes";
-import { getProviderForId } from "../providers";
-import {
-  type Friend,
-  type FriendRequest,
-  FriendRequestType,
-  type Notification,
-  type NotificationConnection,
-  type NotificationFiltersInput,
-  type User,
-  type Wallet,
-  type WalletConnection,
-  type WalletFiltersInput,
+import { getProviderForId, inferProviderIdFromString } from "../providers";
+import type {
+  Friend,
+  FriendRequest,
+  Notification,
+  NotificationConnection,
+  NotificationFiltersInput,
+  ProviderId,
+  User,
+  Wallet,
+  WalletConnection,
+  WalletFiltersInput,
 } from "../types";
-import { createConnection, inferProviderIdFromString } from "../utils";
+import { FriendRequestType } from "../types";
+import { createConnection } from "../utils";
 
 type HasuraOptions = {
   secret: string;
@@ -159,6 +160,10 @@ export class Hasura {
           {
             id: true,
             username: true,
+            public_keys: [
+              { where: { is_primary: { _eq: true } } },
+              { blockchain: true, public_key: true },
+            ],
           },
         ],
       },
@@ -168,6 +173,19 @@ export class Hasura {
     return detailsResp.auth_users.map((u) =>
       NodeBuilder.friend(u.id, {
         avatar: `https://swr.xnfts.dev/avatars/${u.username}`,
+        primaryWallets: u.public_keys.map((pk) => {
+          const provider = getProviderForId(
+            inferProviderIdFromString(pk.blockchain)
+          );
+          return NodeBuilder.friendPrimaryWallet(u.id as string, {
+            address: pk.public_key,
+            provider: NodeBuilder.provider({
+              logo: provider.logo(),
+              name: provider.name(),
+              providerId: provider.id(),
+            }),
+          });
+        }),
         username: u.username as string,
       })
     );
@@ -339,10 +357,15 @@ export class Hasura {
    * by the user ID in the database.
    * @param {string} id
    * @param {string} address
+   * @param {ProviderId} providerId
    * @returns {Promise<Wallet | null>}
    * @memberof Hasura
    */
-  async getWallet(id: string, address: string): Promise<Wallet | null> {
+  async getWallet(
+    id: string,
+    address: string,
+    providerId: ProviderId
+  ): Promise<Wallet | null> {
     // Query Hasura for a single public key owned by the argued user ID
     // and matches the argued public key address
     const resp = await this.#chain("query")(
@@ -356,7 +379,6 @@ export class Hasura {
             },
           },
           {
-            blockchain: true,
             created_at: true,
             is_primary: true,
           },
@@ -369,8 +391,8 @@ export class Hasura {
       return null;
     }
 
-    const { blockchain, created_at, is_primary } = resp.auth_public_keys[0];
-    const provider = getProviderForId(inferProviderIdFromString(blockchain));
+    const { created_at, is_primary } = resp.auth_public_keys[0];
+    const provider = getProviderForId(providerId);
 
     return NodeBuilder.wallet(provider.id(), {
       address,
@@ -446,5 +468,137 @@ export class Hasura {
     });
 
     return createConnection(nodes, false, false);
+  }
+
+  /**
+   * Delete a public key table entry for the user matching the arguments.
+   * @param {string} userId
+   * @param {ProviderId} provider
+   * @param {string} address
+   * @returns {Promise<number>}
+   * @memberof Hasura
+   */
+  async removeUserPublicKey(
+    userId: string,
+    provider: ProviderId,
+    address: string
+  ): Promise<number> {
+    const resp = await this.#chain("mutation")(
+      {
+        delete_auth_public_keys: [
+          {
+            where: {
+              user_id: { _eq: userId },
+              blockchain: { _eq: provider.toLowerCase() },
+              public_key: { _eq: address },
+            },
+          },
+          { affected_rows: true },
+        ],
+      },
+      { operationName: "RemoveUserPublicKey" }
+    );
+    return resp.delete_auth_public_keys?.affected_rows ?? 0;
+  }
+
+  /**
+   * Updates the notification cursor for the argued user if applicable.
+   * @param {string} userId
+   * @param {number} lastNotificationId
+   * @memberof Hasura
+   */
+  async updateNotificationCursor(userId: string, lastNotificationId: number) {
+    const current = await this.#chain("query")(
+      {
+        auth_notification_cursor: [
+          { where: { uuid: { _eq: userId } } },
+          { last_read_notificaiton: true },
+        ],
+      },
+      { operationName: "GetCurrentNotificationCursor" }
+    );
+
+    const currId = current.auth_notification_cursor[0]?.last_read_notificaiton;
+    if (currId && currId >= lastNotificationId) {
+      return;
+    }
+
+    await this.#chain("mutation")(
+      {
+        insert_auth_notification_cursor_one: [
+          {
+            object: {
+              uuid: userId,
+              last_read_notificaiton: lastNotificationId,
+            },
+            on_conflict: {
+              // @ts-ignore
+              update_columns: ["last_read_notificaiton"],
+              // @ts-ignore
+              constraint: "notification_cursor_pkey",
+            },
+          },
+          {
+            uuid: true,
+          },
+        ],
+      },
+      { operationName: "UpdateNotificationCursor" }
+    );
+  }
+
+  /**
+   * Try to update the view status for a list of notification IDs.
+   * @param {string} userId
+   * @param {number[]} ids
+   * @returns {Promise<number | undefined>}
+   * @memberof Hasura
+   */
+  async updateNotificationViewed(
+    userId: string,
+    ids: number[]
+  ): Promise<number | undefined> {
+    const resp = await this.#chain("mutation")(
+      {
+        update_auth_notifications: [
+          {
+            _set: { viewed: true },
+            where: { id: { _in: ids }, uuid: { _eq: userId } },
+          },
+          { affected_rows: true },
+        ],
+      },
+      { operationName: "UpdateNotificationsViewed" }
+    );
+    return resp.update_auth_notifications?.affected_rows;
+  }
+
+  /**
+   * Update the argued user's avatar to the provider ID
+   * and NFT address combination provided in the arguments.
+   * @param {string} userId
+   * @param {ProviderId} providerId
+   * @param {string} nft
+   * @returns {Promise<number>}
+   * @memberof Hasura
+   */
+  async updateUserAvatar(
+    userId: string,
+    providerId: ProviderId,
+    nft: string
+  ): Promise<number> {
+    const response = await this.#chain("mutation")(
+      {
+        update_auth_users: [
+          {
+            _set: { avatar_nft: `${providerId.toLowerCase()}/${nft}` },
+            where: { id: { _eq: userId } },
+          },
+          { affected_rows: true },
+        ],
+      },
+      { operationName: "UpdateUserAvatar" }
+    );
+    return response.update_auth_users?.affected_rows ?? 0;
   }
 }

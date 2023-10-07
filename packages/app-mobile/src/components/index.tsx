@@ -29,9 +29,11 @@ import {
   RoundedContainerGroup,
   SecondaryButton,
   StyledText,
+  StyledTextProps,
   TwoButtonFooter,
   XStack,
   Stack,
+  YStack,
 } from "@coral-xyz/tamagui";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,7 +47,6 @@ export { ActionCard } from "./ActionCard";
 export { MnemonicInputFields } from "./MnemonicInputFields";
 export { NFTCard } from "./NFTCard";
 export { NavHeader } from "./NavHeader";
-export { PasswordInput } from "./PasswordInput";
 export { StyledTextInput } from "./StyledTextInput";
 export { TokenAmountHeader } from "./TokenAmountHeader";
 export { StyledTokenTextInput } from "./TokenInputField";
@@ -61,6 +62,7 @@ export {
   RoundedContainerGroup,
   SecondaryButton,
   StyledText,
+  StyledTextProps,
   TwoButtonFooter,
   UserAvatar,
 };
@@ -224,7 +226,6 @@ export function Header({
           color: theme.custom.colors.fontColor,
           fontSize: 24,
           fontWeight: "500",
-          lineHeight: 32,
         },
         style,
       ]}
@@ -239,7 +240,7 @@ export function SubtextParagraph({
   style,
   onPress,
 }: {
-  children: string;
+  children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   onPress?: () => void;
 }) {
@@ -735,20 +736,13 @@ export function HeaderIconSubtitle({
   subtitle?: string;
 }): JSX.Element {
   return (
-    <View style={headerIconSubtitleStyles.container}>
-      <Margin bottom={16}>{icon}</Margin>
+    <YStack space={12} ai="center" mb={24}>
+      {icon}
       <Header text={title} />
       {subtitle ? <SubtextParagraph>{subtitle}</SubtextParagraph> : null}
-    </View>
+    </YStack>
   );
 }
-
-const headerIconSubtitleStyles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-});
 
 export function Row({
   children,

@@ -9,6 +9,7 @@ import {
   createStackNavigator,
   StackScreenProps,
 } from "@react-navigation/stack";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BottomSheetViewOptions } from "~components/BottomSheetViewOptions";
 import { IconCloseModal } from "~components/Icon";
@@ -32,7 +33,9 @@ import { TokenDetailScreen } from "~screens/TokenDetailScreen";
 import { TokenListScreen } from "~screens/TokenListScreen";
 import { SendCollectibleSendRecipientScreen } from "~screens/Unlocked/SendCollectibleSelectRecipientScreen";
 
+import { OnboardingNavigator } from "~src/navigation/OnboardingNavigator";
 import { SendNavigator } from "~src/navigation/SendNavigator";
+import { RecentActivityDetailScreen } from "~src/screens/RecentActivityDetailScreen";
 import {
   Direction,
   SwapTokenScreen,
@@ -40,25 +43,38 @@ import {
   SwapTokenListScreen,
 } from "~src/screens/Unlocked/SwapTokenScreen";
 
+function OnboardScreen() {
+  return <OnboardingNavigator onStart={console.log} />;
+}
+
 const TopTabs = createMaterialTopTabNavigator<TopTabsParamList>();
 function TopTabsNavigator(): JSX.Element {
-  const theme = useTheme();
   return (
     <TopTabs.Navigator
       initialLayout={{
         width: WINDOW_WIDTH,
       }}
       screenOptions={{
-        tabBarIndicatorStyle: {
-          backgroundColor: theme.custom.colors.fontColor,
+        tabBarStyle: {
+          marginTop: 12,
+          marginHorizontal: 12,
+          backgroundColor: "transparent",
         },
-        tabBarActiveTintColor: theme.custom.colors.fontColor,
         tabBarLabelStyle: {
           textTransform: "capitalize",
-          fontSize: 15,
+          fontSize: 16,
           fontFamily: "InterMedium",
-          color: theme.custom.colors.fontColor,
         },
+        tabBarIndicatorStyle: {
+          borderRadius: 12,
+          backgroundColor: "rgba(0, 87, 235, 0.15)",
+          alignSelf: "center",
+          height: 40,
+          marginBottom: 4,
+        },
+        tabBarActiveTintColor: "#0057EB",
+        tabBarInactiveTintColor: "#5D606F",
+        tabBarPressOpacity: 0.2,
       }}
     >
       <TopTabs.Screen
@@ -88,8 +104,8 @@ export type WalletStackParamList = {
     publicKey: string;
   };
   TokenDetail: {
-    blockchain: Blockchain;
-    tokenTicker: string;
+    title: string;
+    tokenMint: string;
   };
   // List of collectibles/nfts for a collection
   CollectionDetail: {
@@ -101,6 +117,10 @@ export type WalletStackParamList = {
     id: string;
     title: string;
     blockchain: Blockchain;
+  };
+  RecentActivityDetail: {
+    id: string;
+    title: string;
   };
   Notifications: undefined;
   SwapModal: undefined;
@@ -128,6 +148,11 @@ export type CollectionItemDetailScreenProps = StackScreenProps<
   "CollectionItemDetail"
 >;
 
+export type RecentActivityDetailScreenProps = StackScreenProps<
+  WalletStackParamList,
+  "RecentActivityDetail"
+>;
+
 const Stack = createStackNavigator<WalletStackParamList>();
 export function WalletsNavigator(): JSX.Element {
   const theme = useTamaguiTheme();
@@ -135,7 +160,10 @@ export function WalletsNavigator(): JSX.Element {
     <Stack.Navigator
       initialRouteName="HomeWalletList"
       screenOptions={{
-        headerTintColor: theme.fontColor.val,
+        headerTintColor: theme.baseTextMedEmphasis.val,
+        headerStyle: {
+          backgroundColor: "transparent",
+        },
       }}
     >
       <Stack.Screen
@@ -146,6 +174,9 @@ export function WalletsNavigator(): JSX.Element {
             headerShown: true,
             headerBackTitleVisible: false,
             title: "Balances",
+            headerStyle: {
+              backgroundColor: "transparent",
+            },
             headerTitle: ({ tintColor, children }) => {
               return (
                 <BottomSheetViewOptions
@@ -163,8 +194,9 @@ export function WalletsNavigator(): JSX.Element {
             headerRight: (props) => (
               <HeaderButtonSpacer>
                 <HeaderButton
-                  name="notifications"
                   {...props}
+                  name="notifications-none"
+                  tintColor={theme.icon.val}
                   onPress={() => {
                     navigation.navigate("Notifications");
                   }}
@@ -181,6 +213,9 @@ export function WalletsNavigator(): JSX.Element {
         options={{
           headerShadowVisible: false,
           headerBackTitleVisible: false,
+          headerStyle: {
+            backgroundColor: "transparent",
+          },
           headerTitle: () => {
             return <WalletSwitcherButton />;
           },
@@ -190,10 +225,8 @@ export function WalletsNavigator(): JSX.Element {
         name="TokenDetail"
         component={TokenDetailScreen}
         options={({ route }) => {
-          const { blockchain, tokenTicker } = route.params;
-          const title = `${toTitleCase(blockchain)} / ${tokenTicker}`;
           return {
-            title,
+            title: route.params.title,
           };
         }}
       />
@@ -210,13 +243,21 @@ export function WalletsNavigator(): JSX.Element {
       <Stack.Screen
         name="CollectionItemDetail"
         component={CollectionItemDetailScreen}
-        options={({ route, navigation }) => {
+        options={({ route }) => {
           return {
             headerBackTitleVisible: false,
             title: route.params.title,
           };
         }}
       />
+      <Stack.Screen
+        name="RecentActivityDetail"
+        component={RecentActivityDetailScreen}
+        options={{
+          title: "Recent Activity",
+        }}
+      />
+      <Stack.Screen name="OnboardScreen" component={OnboardScreen} />
       <Stack.Group
         screenOptions={{
           presentation: "modal",
@@ -268,9 +309,10 @@ type SwapStackParamList = {
 
 const SwapStack = createNativeStackNavigator<SwapStackParamList>();
 function SwapNavigator(): JSX.Element {
+  const insets = useSafeAreaInsets();
   const theme = useTheme();
   return (
-    <View style={{ paddingBottom: 48 }}>
+    <View style={{ flex: 1, marginBottom: insets.bottom }}>
       <SwapProvider>
         <SwapStack.Navigator
           screenOptions={{

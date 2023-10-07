@@ -100,10 +100,7 @@ export class SecureStore {
   }
 
   async setIsCold(publicKey: string, isCold?: boolean) {
-    let keynames = await this.db.get(KEY_IS_COLD_STORE);
-    if (!keynames) {
-      keynames = {};
-    }
+    const keynames = (await this.db.get(KEY_IS_COLD_STORE)) || {};
     keynames[publicKey] = isCold;
     await this.db.set(KEY_IS_COLD_STORE, keynames);
   }
@@ -114,18 +111,28 @@ export class SecureStore {
     return isCold;
   }
 
-  async setKeyname(publicKey: string, name: string) {
-    let keynames = await this.db.get(KEY_KEYNAME_STORE);
-    if (!keynames) {
-      keynames = {};
+  async setKeyname(publicKey: string, name: string, blockchain: Blockchain) {
+    const keynames = (await this.db.get(KEY_KEYNAME_STORE)) || {};
+    if (!keynames[blockchain]) {
+      keynames[blockchain] = {};
     }
-    keynames[publicKey] = name;
+    keynames[blockchain][publicKey] = name;
     await this.db.set(KEY_KEYNAME_STORE, keynames);
   }
 
-  async getKeyname(publicKey: string): Promise<string> {
+  async getKeyname(publicKey: string, blockchain: Blockchain): Promise<string> {
     const names = await this.db.get(KEY_KEYNAME_STORE);
-    const name = names[publicKey];
+
+    let name: string | undefined;
+
+    if (names[blockchain] && names[blockchain][publicKey]) {
+      name = names[blockchain][publicKey];
+    }
+    // Only hit this for legacy reasons.
+    else {
+      name = names[publicKey];
+    }
+
     if (!name) {
       throw Error(`unable to find name for key: ${publicKey.toString()}`);
     }

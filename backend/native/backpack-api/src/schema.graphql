@@ -51,9 +51,19 @@ type Mutation {
   markNotificationsAsRead(ids: [Int!]!): Int!
 
   """
+  Deletes a public key registered to the active user account.
+  """
+  removePublicKey(providerId: ProviderID!, address: String!): Boolean!
+
+  """
   Allows users to send friend requests to another remote user.
   """
   sendFriendRequest(otherUserId: String!, accept: Boolean!): Boolean
+
+  """
+  Set a user's avatar to a new image.
+  """
+  setAvatar(providerId: ProviderID!, nft: String!): Boolean!
 }
 
 """
@@ -97,7 +107,9 @@ Provider ID enum variants for the supported blockchains or wallet types in the A
 """
 enum ProviderID {
   BITCOIN
+  ECLIPSE
   ETHEREUM
+  POLYGON
   SOLANA
 }
 
@@ -348,9 +360,34 @@ type Friend implements Node {
   avatar: String!
 
   """
+  The primary wallets associated with the user.
+  """
+  primaryWallets: [FriendPrimaryWallet!]!
+
+  """
   The Backpack username of the friend.
   """
   username: String!
+}
+
+"""
+Abbreviated wallet information for the primary wallet(s) of a friend.
+"""
+type FriendPrimaryWallet implements Node {
+  """
+  Globally unique identifier for the friend's primary wallet.
+  """
+  id: ID!
+
+  """
+  The public key of the wallet.
+  """
+  address: String!
+
+  """
+  The ID of the provider associated with the wallet.
+  """
+  provider: Provider!
 }
 
 """
@@ -892,7 +929,7 @@ type User implements Node {
   """
   Get a single wallet object for the argued public key address.
   """
-  wallet(address: String!): Wallet
+  wallet(address: String!, providerId: ProviderID!): Wallet
 
   """
   The Relay connection for the wallet's and their data that are registered to the user.

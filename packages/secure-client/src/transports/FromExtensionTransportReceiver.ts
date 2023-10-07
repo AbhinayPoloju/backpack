@@ -1,18 +1,22 @@
 import {
   CHANNEL_SECURE_BACKGROUND_EXTENSION_REQUEST,
   CHANNEL_SECURE_BACKGROUND_EXTENSION_RESPONSE,
+  getLogger,
 } from "@coral-xyz/common";
 import { TransportResponder } from "@coral-xyz/secure-background/clients";
 import type {
   SECURE_EVENTS,
   SecureRequest,
+  SecureResponseType,
   TransportHandler,
   TransportReceiver,
 } from "@coral-xyz/secure-background/types";
 
+const logger = getLogger("secure-client FromExtensionTransportReceiver");
+
 export class FromExtensionTransportReceiver<
   T extends SECURE_EVENTS = SECURE_EVENTS,
-  R extends "response" | "confirmation" = "response"
+  R extends SecureResponseType = "response"
 > implements TransportReceiver<T, R>
 {
   constructor() {}
@@ -36,7 +40,7 @@ export class FromExtensionTransportReceiver<
               data: response,
             })
             .catch((error) => {
-              console.error("PCA", error);
+              logger.error(error);
             });
         },
       });

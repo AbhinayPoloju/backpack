@@ -12,15 +12,16 @@ import {
   Blockchain,
   confirmTransaction,
   customSplTokenAccounts,
+  DEFAULT_SOLANA_CLUSTER,
   fetchSplMetadataUri,
   getLogger,
+  NOTIFICATION_ACTIVE_WALLET_UPDATED,
   NOTIFICATION_BLOCKCHAIN_KEYRING_CREATED,
   NOTIFICATION_BLOCKCHAIN_KEYRING_DELETED,
+  NOTIFICATION_CONNECTION_URL_UPDATED,
   NOTIFICATION_KEYRING_STORE_CREATED,
   NOTIFICATION_KEYRING_STORE_LOCKED,
   NOTIFICATION_KEYRING_STORE_UNLOCKED,
-  NOTIFICATION_SOLANA_ACTIVE_WALLET_UPDATED,
-  NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED,
   NOTIFICATION_SOLANA_SPL_TOKENS_DID_UPDATE,
 } from "@coral-xyz/common";
 import type {
@@ -110,9 +111,12 @@ export function start(events: EventEmitter): SolanaConnectionBackend {
   return b;
 }
 
+const defaultSolanaUrl =
+  process.env.DEFAULT_SOLANA_CONNECTION_URL || DEFAULT_SOLANA_CLUSTER;
+
 export class SolanaConnectionBackend {
   private cache = new Map<string, CachedValue<any>>();
-  private connection?: Connection;
+  private connection?: Connection = new Connection(defaultSolanaUrl);
   private url?: string;
   private pollIntervals: Array<any>;
   private events: EventEmitter;
@@ -147,10 +151,10 @@ export class SolanaConnectionBackend {
         case NOTIFICATION_KEYRING_STORE_LOCKED:
           handleKeyringStoreLocked(notif);
           break;
-        case NOTIFICATION_SOLANA_ACTIVE_WALLET_UPDATED:
+        case NOTIFICATION_ACTIVE_WALLET_UPDATED:
           handleActiveWalletUpdated(notif);
           break;
-        case NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED:
+        case NOTIFICATION_CONNECTION_URL_UPDATED:
           handleConnectionUrlUpdated(notif);
           break;
         case NOTIFICATION_BLOCKCHAIN_KEYRING_CREATED:
@@ -184,17 +188,28 @@ export class SolanaConnectionBackend {
     };
 
     const handleKeyringStoreLocked = (_notif: Notification) => {
+      this.connection = new Connection(defaultSolanaUrl);
       this.stopPolling();
     };
 
     const handleActiveWalletUpdated = (notif: Notification) => {
-      const { activeWallet } = notif.data;
+      const { activeWallet, blockchain } = notif.data;
+
+      if (blockchain !== Blockchain.SOLANA) {
+        return;
+      }
+
       this.stopPolling();
       this.startPolling(new PublicKey(activeWallet));
     };
 
     const handleConnectionUrlUpdated = (notif: Notification) => {
-      const { activeWallet, url } = notif.data;
+      const { activeWallet, url, blockchain } = notif.data;
+
+      if (blockchain !== Blockchain.SOLANA) {
+        return;
+      }
+
       this.connection = new Connection(url, this.connection!.commitment);
       this.url = url;
       // activeWallet can be null if the blockchain is disabled, in that case

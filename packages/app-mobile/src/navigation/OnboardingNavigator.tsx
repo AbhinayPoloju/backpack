@@ -5,21 +5,22 @@ import type {
 } from "@coral-xyz/common";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   FlatList,
   StyleSheet,
   View,
   Platform,
   KeyboardAvoidingView,
-  Pressable,
-  Text,
   DevSettings,
   StyleProp,
   ViewStyle,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
+
+import * as Haptics from "expo-haptics";
 
 import {
   getAuthMessage,
@@ -30,8 +31,6 @@ import {
   DISCORD_INVITE_LINK,
   toTitleCase,
   TWITTER_LINK,
-  UI_RPC_METHOD_KEYRING_STORE_MNEMONIC_CREATE,
-  UI_RPC_METHOD_KEYRING_VALIDATE_MNEMONIC,
   XNFT_GG_LINK,
   PrivateKeyWalletDescriptor,
 } from "@coral-xyz/common";
@@ -69,14 +68,12 @@ import {
   TwitterIcon,
   WidgetIcon,
 } from "~components/Icon";
-import { UsernameInput } from "~components/StyledTextInput";
+import { UsernameInput, PasswordInput } from "~components/StyledTextInput";
 import {
   ActionCard,
   FullScreenLoading,
   Header,
   Margin,
-  MnemonicInputFields,
-  PasswordInput,
   PrimaryButton,
   SecondaryButton,
   LinkButton,
@@ -84,8 +81,6 @@ import {
   StyledText,
   SubtextParagraph,
   WelcomeLogoHeader,
-  CopyButton,
-  PasteButton,
   EmptyState,
   CallToAction,
 } from "~components/index";
@@ -93,6 +88,8 @@ import { useTheme } from "~hooks/useTheme";
 import { useSession } from "~lib/SessionProvider";
 import { maybeRender } from "~lib/index";
 
+import * as Form from "~src/components/Form";
+import { MnemonicInput } from "~src/components/MnemonicInput";
 import {
   BiometricAuthenticationStatus,
   BIOMETRIC_PASSWORD,
@@ -302,26 +299,30 @@ function CreateOrRecoverAccountScreen({
 }: CreateOrRecoverAccountScreenProps) {
   const insets = useSafeAreaInsets();
   const { setOnboardingData } = useOnboarding();
+  const { appState } = useSession();
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const handlePresentModalPress = () => {
     setIsModalVisible((last) => !last);
   };
 
+  const isAddingAccount = appState === "isAddingAccount";
+
+  const insetStyles = {
+    marginTop: insets.top,
+    marginBottom: insets.bottom,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
+
   return (
     <>
       <Screen
-        style={[
-          styles.container,
-          {
-            marginTop: insets.top,
-            marginBottom: insets.bottom,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          },
-        ]}
+        style={[styles.container, !isAddingAccount ? insetStyles : undefined]}
       >
-        <HelpModalMenuButton onPress={handlePresentModalPress} />
+        {isAddingAccount ? null : (
+          <HelpModalMenuButton onPress={handlePresentModalPress} />
+        )}
         <Box marginTop={48} marginBottom={24}>
           <WelcomeLogoHeader />
         </Box>
@@ -379,7 +380,7 @@ function OnboardingCreateOrImportWalletScreen({
           }}
         />
         <LinkButton
-          label="I already have an wallet"
+          label="I already have a wallet"
           onPress={() => {
             setOnboardingData({ action: "recover" });
             navigation.push(RecoverAccountRoutes.KeyringTypeSelector);
@@ -537,31 +538,73 @@ function OnboardingPrivateKeyInputScreen({
   );
 }
 
+type UsernameData = {
+  username: string;
+};
+
 function CreateOrRecoverUsernameScreen({
   navigation,
 }: StackScreenProps<
   OnboardingStackParamList,
   "CreateOrRecoverUsername"
 >): JSX.Element {
-  const [error, setError] = useState("");
+  const { control, clearErrors, handleSubmit, setError, formState } =
+    useForm<UsernameData>();
   const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState("");
   const { onboardingData, setOnboardingData } = useOnboarding();
   const { action } = onboardingData; // create | recover
 
   const screenTitle =
     action === "create" ? "Claim your username" : "Username recovery";
 
+  const onSubmit = async ({ username }: UsernameData) => {
+    clearErrors("username");
+    setLoading(true);
+    if (action === "recover") {
+      try {
+        const json = await fetchRequestCheckIfUserExists({ username });
+        setOnboardingData({
+          username,
+          userId: json.id,
+          serverPublicKeys: json.publicKeys,
+        });
+
+        navigation.push(RecoverAccountRoutes.KeyringTypeSelector);
+      } catch (err: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setError("username", { message: err.message });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (action === "create") {
+      try {
+        await fetchRequestCreateUser({
+          username,
+          inviteCode: onboardingData.inviteCode,
+        });
+
+        setOnboardingData({ username });
+        navigation.push(NewAccountRoutes.CreateOrImportWallet);
+      } catch (err: any) {
+        setError("username", { message: err.message });
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const text =
     action === "create" ? (
       <View style={{ flex: 1 }}>
-        <Box marginBottom={12}>
+        <Box mb={12}>
           <SubtextParagraph>
             Others can see and find you by this username, and it will be
             associated with your primary wallet address.
           </SubtextParagraph>
         </Box>
-        <Box marginBottom={12}>
+        <Box mb={12}>
           <SubtextParagraph>
             Choose wisely if you'd like to remain anonymous.
           </SubtextParagraph>
@@ -578,42 +621,6 @@ function CreateOrRecoverUsernameScreen({
       </View>
     );
 
-  const handlePresContinue = async () => {
-    setLoading(true);
-    if (action === "recover") {
-      try {
-        const json = await fetchRequestCheckIfUserExists({ username });
-        setOnboardingData({
-          username,
-          userId: json.id,
-          serverPublicKeys: json.publicKeys,
-        });
-
-        navigation.push(RecoverAccountRoutes.KeyringTypeSelector);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (action === "create") {
-      try {
-        await fetchRequestCreateUser({
-          username,
-          inviteCode: onboardingData.inviteCode,
-        });
-
-        setOnboardingData({ username });
-        navigation.push(NewAccountRoutes.CreateOrImportWallet);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -622,24 +629,19 @@ function CreateOrRecoverUsernameScreen({
     >
       <OnboardingScreen title={screenTitle}>
         {text}
-        <View>
-          <Box marginBottom={18}>
-            <UsernameInput
-              username={username}
-              onChange={setUsername}
-              onComplete={handlePresContinue}
-            />
-          </Box>
-          {maybeRender(error !== "", () => (
-            <ErrorMessage for={{ message: error }} />
-          ))}
-          <PrimaryButton
-            loading={loading}
-            disabled={!username?.length}
-            label="Continue"
-            onPress={handlePresContinue}
+        <Form.Input errorMessage={formState.errors?.username?.message}>
+          <UsernameInput
+            control={control}
+            errorMessage={Boolean(formState.errors?.username)}
+            onSubmitEditing={handleSubmit(onSubmit)}
           />
-        </View>
+        </Form.Input>
+        <PrimaryButton
+          loading={loading}
+          disabled={!formState.isValid ? !formState.isDirty : null}
+          label="Continue"
+          onPress={handleSubmit(onSubmit)}
+        />
       </OnboardingScreen>
     </KeyboardAvoidingView>
   );
@@ -648,111 +650,40 @@ function CreateOrRecoverUsernameScreen({
 function OnboardingMnemonicInputScreen({
   navigation,
 }: StackScreenProps<OnboardingStackParamList, "MnemonicInput">) {
+  const [error, setError] = useState<string>();
+  const [checked, setChecked] = useState(false);
+  const [isValid, setIsValid] = useState(false);
+
   const { onboardingData, setOnboardingData } = useOnboarding();
   const { action } = onboardingData;
   const readOnly = action === "create";
-
-  const background = useBackgroundClient();
-  const [mnemonicWords, setMnemonicWords] = useState<string[]>([
-    ...Array(12).fill(""),
-  ]);
-
-  const [error, setError] = useState<string>();
-  const [checked, setChecked] = useState(false);
-
-  const mnemonic = mnemonicWords.map((f) => f.trim()).join(" ");
-  // Only enable copy all fields populated
-  const copyEnabled = mnemonicWords.find((w) => w.length < 3) === undefined;
-  // Only allow next if checkbox is checked in read only and all fields are populated
-  const nextEnabled = (!readOnly || checked) && copyEnabled;
 
   const subtitle = readOnly
     ? "This is the only way to recover your account if you lose your device. Write it down and store it in a safe place."
     : "Enter your 12 or 24-word secret recovery mnemonic to add an existing wallet.";
 
-  //
-  // Generate a random mnemonic and populate state.
-  //
-  const generateRandom = useCallback(() => {
-    background
-      .request({
-        method: UI_RPC_METHOD_KEYRING_STORE_MNEMONIC_CREATE,
-        params: [mnemonicWords.length === 12 ? 128 : 256],
-      })
-      .then((m: string) => {
-        const words = m.split(" ");
-        setMnemonicWords(words);
-      });
-  }, []); // eslint-disable-line
-
-  const next = () => {
-    background
-      .request({
-        method: UI_RPC_METHOD_KEYRING_VALIDATE_MNEMONIC,
-        params: [mnemonic],
-      })
-      .then((isValid: boolean) => {
-        setOnboardingData({ mnemonic });
-        const route =
-          action === "recover" ? "MnemonicSearch" : "SelectBlockchain";
-        return isValid
-          ? navigation.push(route)
-          : setError("Invalid secret recovery phrase");
-      });
+  const onComplete = ({
+    isValid,
+    mnemonic,
+  }: {
+    isValid: boolean;
+    mnemonic: string;
+  }) => {
+    setIsValid(isValid);
+    if (isValid) {
+      setOnboardingData({ mnemonic });
+    }
   };
 
-  useEffect(() => {
-    if (readOnly) {
-      generateRandom();
-    }
-  }, [readOnly, generateRandom]);
+  const isButtonDisabled =
+    (readOnly && !checked) || (!readOnly && !isValid && !checked);
 
   return (
-    <OnboardingScreen
-      scrollable
-      title="Secret recovery phrase"
-      subtitle={subtitle}
-    >
-      <View>
-        <MnemonicInputFields
-          mnemonicWords={mnemonicWords}
-          onChange={readOnly ? undefined : setMnemonicWords}
-          onComplete={next}
-        />
-        <Margin top={12}>
-          {readOnly ? (
-            <CopyButton text={mnemonicWords.join(", ")} />
-          ) : (
-            <PasteButton
-              onPaste={(words) => {
-                const split = words.split(" ");
-                if ([12, 24].includes(split.length)) {
-                  setMnemonicWords(words.split(" "));
-                } else {
-                  Alert.alert("Mnemonic should be either 12 or 24 words");
-                }
-              }}
-            />
-          )}
-        </Margin>
-      </View>
-      <View style={{ flex: 1 }} />
-      <View>
-        {maybeRender(!readOnly, () => (
-          <Pressable
-            style={{ alignSelf: "center", marginBottom: 18 }}
-            onPress={() => {
-              setMnemonicWords([
-                ...Array(mnemonicWords.length === 12 ? 24 : 12).fill(""),
-              ]);
-            }}
-          >
-            <Text style={{ fontSize: 18 }}>
-              Use a {mnemonicWords.length === 12 ? "24" : "12"}-word recovery
-              mnemonic
-            </Text>
-          </Pressable>
-        ))}
+    <OnboardingScreen title="Secret recovery phrase" subtitle={subtitle}>
+      <YStack f={1}>
+        <MnemonicInput readOnly={readOnly} onComplete={onComplete} />
+      </YStack>
+      <YStack space={8}>
         {maybeRender(readOnly, () => (
           <View style={{ alignSelf: "center" }}>
             <Margin bottom={18}>
@@ -761,6 +692,7 @@ function OnboardingMnemonicInputScreen({
                 value={checked}
                 onPress={() => {
                   setChecked(!checked);
+                  setIsValid(readOnly && !checked);
                 }}
               />
             </Margin>
@@ -770,17 +702,19 @@ function OnboardingMnemonicInputScreen({
           <ErrorMessage for={{ message: error }} />
         ))}
         <PrimaryButton
-          disabled={!nextEnabled}
+          disabled={isButtonDisabled}
           label={action === "create" ? "Next" : "Import"}
-          onPress={next}
-        />
-        <LinkButton
-          label="Start over"
           onPress={() => {
-            setMnemonicWords([...Array(12).fill("")]);
+            if (isValid) {
+              const route =
+                action === "recover" ? "MnemonicSearch" : "SelectBlockchain";
+              navigation.push(route);
+            } else {
+              setError("Invalid secret recovery phrase");
+            }
           }}
         />
-      </View>
+      </YStack>
     </OnboardingScreen>
   );
 }
@@ -864,26 +798,21 @@ function MnemonicSearchScreen({
     return <FullScreenLoading />;
   }
 
+  const subtitle =
+    serverPublicKeys.length === 1
+      ? `We couldn't find the public key
+            ${formatWalletAddress(serverPublicKeys[0].publicKey)} using your
+            recovery phrase.`
+      : `We couldn't find any wallets using your recovery phrase.`;
+
   return (
-    <Screen>
-      <Box>
-        <Header text="Unable to recover wallet" />
-        {serverPublicKeys.length === 1 ? (
-          <SubtextParagraph>
-            We couldn't find the public key
-            {formatWalletAddress(serverPublicKeys[0].publicKey)} using your
-            recovery phrase.
-          </SubtextParagraph>
-        ) : (
-          <SubtextParagraph>
-            We couldn't find any wallets using your recovery phrase.
-          </SubtextParagraph>
-        )}
-      </Box>
-      <Box>
-        <PrimaryButton label="Retry" onPress={() => navigation.goBack()} />
-      </Box>
-    </Screen>
+    <OnboardingScreen title="Unable to recover wallet" subtitle={subtitle}>
+      <Box />
+      <PrimaryButton
+        label="Go back & retry"
+        onPress={() => navigation.goBack()}
+      />
+    </OnboardingScreen>
   );
 }
 
@@ -1031,7 +960,7 @@ export function OnboardingBiometricsScreen({
         />
         <PrimaryButton
           disabled={false}
-          label="Turn on Face ID"
+          label={`Enable ${biometricName}`}
           onPress={onPressEnableBiometrics}
         />
       </Box>
@@ -1064,6 +993,8 @@ function OnboardingCreatePasswordScreen({
     navigation.push("CreateAccountLoading");
   };
 
+  const nextInputRef = useRef<TextInput>(null);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -1075,28 +1006,31 @@ function OnboardingCreatePasswordScreen({
         subtitle="It should be at least 8 characters. You'll need this to unlock Backpack."
       >
         <View style={{ flex: 1, justifyContent: "flex-start" }}>
-          <Margin bottom={12}>
-            <PasswordInput
-              autoFocus
-              name="password"
-              placeholder="Password"
-              control={control}
-              returnKeyType="next"
-              rules={{
-                required: "You must specify a password",
-                minLength: {
-                  value: 8,
-                  message: "Password must be at least 8 characters",
-                },
-              }}
-            />
-            <ErrorMessage for={errors.password} />
-          </Margin>
           <PasswordInput
+            autoFocus
+            name="password"
+            placeholder="Password"
+            control={control}
+            returnKeyType="next"
+            onSubmitEditing={() => {
+              nextInputRef.current?.focus();
+            }}
+            rules={{
+              required: "You must specify a password",
+              minLength: {
+                value: 8,
+                message: "Password must be at least 8 characters",
+              },
+            }}
+          />
+          <ErrorMessage for={errors.password} />
+          <PasswordInput
+            ref={nextInputRef}
             name="passwordConfirmation"
             placeholder="Confirm Password"
-            returnKeyType="done"
             control={control}
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit(onSubmit)}
             rules={{
               validate: (val: string) => {
                 if (val !== watch("password")) {
@@ -1262,11 +1196,17 @@ export function OnboardingNavigator({
     <OnboardingProvider>
       <Stack.Navigator
         initialRouteName="CreateOrRecoverAccount"
-        screenOptions={{ headerShown: false }}
+        screenOptions={{ headerShown: false, presentation: "modal" }}
       >
         <Stack.Screen
           name="CreateOrRecoverAccount"
           component={CreateOrRecoverAccountScreen}
+          options={{
+            presentation: "modal",
+            cardStyle: {
+              marginTop: 0,
+            },
+          }}
         />
         <Stack.Screen
           name="Biometrics"

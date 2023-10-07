@@ -83,8 +83,21 @@ export type Friend = Node & {
   avatar: Scalars["String"];
   /** Globally unique identifier for a friend of a user. */
   id: Scalars["ID"];
+  /** The primary wallets associated with the user. */
+  primaryWallets: Array<FriendPrimaryWallet>;
   /** The Backpack username of the friend. */
   username: Scalars["String"];
+};
+
+/** Abbreviated wallet information for the primary wallet(s) of a friend. */
+export type FriendPrimaryWallet = Node & {
+  __typename?: "FriendPrimaryWallet";
+  /** The public key of the wallet. */
+  address: Scalars["String"];
+  /** Globally unique identifier for the friend's primary wallet. */
+  id: Scalars["ID"];
+  /** The ID of the provider associated with the wallet. */
+  provider: Provider;
 };
 
 /** Friend request data for a user. */
@@ -158,8 +171,12 @@ export type Mutation = {
   importPublicKey?: Maybe<Scalars["Boolean"]>;
   /** Set the `viewed` status of the argued notification IDs are `true`. */
   markNotificationsAsRead: Scalars["Int"];
+  /** Deletes a public key registered to the active user account. */
+  removePublicKey: Scalars["Boolean"];
   /** Allows users to send friend requests to another remote user. */
   sendFriendRequest?: Maybe<Scalars["Boolean"]>;
+  /** Set a user's avatar to a new image. */
+  setAvatar: Scalars["Boolean"];
 };
 
 /** Root level mutation type. */
@@ -183,9 +200,21 @@ export type MutationMarkNotificationsAsReadArgs = {
 };
 
 /** Root level mutation type. */
+export type MutationRemovePublicKeyArgs = {
+  address: Scalars["String"];
+  providerId: ProviderId;
+};
+
+/** Root level mutation type. */
 export type MutationSendFriendRequestArgs = {
   accept: Scalars["Boolean"];
   otherUserId: Scalars["String"];
+};
+
+/** Root level mutation type. */
+export type MutationSetAvatarArgs = {
+  nft: Scalars["String"];
+  providerId: ProviderId;
 };
 
 /** Generic NFT object type definition to provide on-chain and off-chain metadata. */
@@ -341,7 +370,9 @@ export type Provider = Node & {
 /** Provider ID enum variants for the supported blockchains or wallet types in the API. */
 export enum ProviderId {
   Bitcoin = "BITCOIN",
+  Eclipse = "ECLIPSE",
   Ethereum = "ETHEREUM",
+  Polygon = "POLYGON",
   Solana = "SOLANA",
 }
 
@@ -538,6 +569,7 @@ export type UserNotificationsArgs = {
  */
 export type UserWalletArgs = {
   address: Scalars["String"];
+  providerId: ProviderId;
 };
 
 /**
@@ -610,6 +642,7 @@ export type WalletFiltersInput = {
 
 export type GetBalanceSummaryQueryVariables = Exact<{
   address: Scalars["String"];
+  providerId: ProviderId;
 }>;
 
 export type GetBalanceSummaryQuery = {
@@ -637,6 +670,7 @@ export type GetBalanceSummaryQuery = {
 
 export type GetTokenBalancesQueryVariables = Exact<{
   address: Scalars["String"];
+  providerId: ProviderId;
 }>;
 
 export type GetTokenBalancesQuery = {
@@ -676,6 +710,48 @@ export type GetTokenBalancesQuery = {
             };
           }>;
         } | null;
+      } | null;
+    } | null;
+  } | null;
+};
+
+export type GetCollectiblesQueryVariables = Exact<{
+  address: Scalars["String"];
+  providerId: ProviderId;
+}>;
+
+export type GetCollectiblesQuery = {
+  __typename?: "Query";
+  user?: {
+    __typename?: "User";
+    id: string;
+    wallet?: {
+      __typename?: "Wallet";
+      id: string;
+      nfts?: {
+        __typename?: "NftConnection";
+        edges: Array<{
+          __typename?: "NftEdge";
+          node: {
+            __typename?: "Nft";
+            id: string;
+            address: string;
+            compressed: boolean;
+            image?: string | null;
+            name?: string | null;
+            attributes?: Array<{
+              __typename?: "NftAttribute";
+              trait: string;
+              value: string;
+            }> | null;
+            collection?: {
+              __typename?: "Collection";
+              id: string;
+              address: string;
+              name?: string | null;
+            } | null;
+          };
+        }>;
       } | null;
     } | null;
   } | null;
@@ -751,6 +827,7 @@ export type GetTokenListEntryLogoQuery = {
 
 export type GetTransactionsQueryVariables = Exact<{
   address: Scalars["String"];
+  providerId: ProviderId;
   filters?: InputMaybe<TransactionFiltersInput>;
 }>;
 
@@ -808,6 +885,20 @@ export const GetBalanceSummaryDocument = {
             },
           },
         },
+        {
+          kind: "VariableDefinition",
+          variable: {
+            kind: "Variable",
+            name: { kind: "Name", value: "providerId" },
+          },
+          type: {
+            kind: "NonNullType",
+            type: {
+              kind: "NamedType",
+              name: { kind: "Name", value: "ProviderID" },
+            },
+          },
+        },
       ],
       selectionSet: {
         kind: "SelectionSet",
@@ -829,6 +920,14 @@ export const GetBalanceSummaryDocument = {
                       value: {
                         kind: "Variable",
                         name: { kind: "Name", value: "address" },
+                      },
+                    },
+                    {
+                      kind: "Argument",
+                      name: { kind: "Name", value: "providerId" },
+                      value: {
+                        kind: "Variable",
+                        name: { kind: "Name", value: "providerId" },
                       },
                     },
                   ],
@@ -916,6 +1015,20 @@ export const GetTokenBalancesDocument = {
             },
           },
         },
+        {
+          kind: "VariableDefinition",
+          variable: {
+            kind: "Variable",
+            name: { kind: "Name", value: "providerId" },
+          },
+          type: {
+            kind: "NonNullType",
+            type: {
+              kind: "NamedType",
+              name: { kind: "Name", value: "ProviderID" },
+            },
+          },
+        },
       ],
       selectionSet: {
         kind: "SelectionSet",
@@ -937,6 +1050,14 @@ export const GetTokenBalancesDocument = {
                       value: {
                         kind: "Variable",
                         name: { kind: "Name", value: "address" },
+                      },
+                    },
+                    {
+                      kind: "Argument",
+                      name: { kind: "Name", value: "providerId" },
+                      value: {
+                        kind: "Variable",
+                        name: { kind: "Name", value: "providerId" },
                       },
                     },
                   ],
@@ -1098,6 +1219,207 @@ export const GetTokenBalancesDocument = {
 } as unknown as DocumentNode<
   GetTokenBalancesQuery,
   GetTokenBalancesQueryVariables
+>;
+export const GetCollectiblesDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "query",
+      name: { kind: "Name", value: "GetCollectibles" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: {
+            kind: "Variable",
+            name: { kind: "Name", value: "address" },
+          },
+          type: {
+            kind: "NonNullType",
+            type: {
+              kind: "NamedType",
+              name: { kind: "Name", value: "String" },
+            },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: {
+            kind: "Variable",
+            name: { kind: "Name", value: "providerId" },
+          },
+          type: {
+            kind: "NonNullType",
+            type: {
+              kind: "NamedType",
+              name: { kind: "Name", value: "ProviderID" },
+            },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "user" },
+            selectionSet: {
+              kind: "SelectionSet",
+              selections: [
+                { kind: "Field", name: { kind: "Name", value: "id" } },
+                {
+                  kind: "Field",
+                  name: { kind: "Name", value: "wallet" },
+                  arguments: [
+                    {
+                      kind: "Argument",
+                      name: { kind: "Name", value: "address" },
+                      value: {
+                        kind: "Variable",
+                        name: { kind: "Name", value: "address" },
+                      },
+                    },
+                    {
+                      kind: "Argument",
+                      name: { kind: "Name", value: "providerId" },
+                      value: {
+                        kind: "Variable",
+                        name: { kind: "Name", value: "providerId" },
+                      },
+                    },
+                  ],
+                  selectionSet: {
+                    kind: "SelectionSet",
+                    selections: [
+                      { kind: "Field", name: { kind: "Name", value: "id" } },
+                      {
+                        kind: "Field",
+                        name: { kind: "Name", value: "nfts" },
+                        selectionSet: {
+                          kind: "SelectionSet",
+                          selections: [
+                            {
+                              kind: "Field",
+                              name: { kind: "Name", value: "edges" },
+                              selectionSet: {
+                                kind: "SelectionSet",
+                                selections: [
+                                  {
+                                    kind: "Field",
+                                    name: { kind: "Name", value: "node" },
+                                    selectionSet: {
+                                      kind: "SelectionSet",
+                                      selections: [
+                                        {
+                                          kind: "Field",
+                                          name: { kind: "Name", value: "id" },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: {
+                                            kind: "Name",
+                                            value: "address",
+                                          },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: {
+                                            kind: "Name",
+                                            value: "attributes",
+                                          },
+                                          selectionSet: {
+                                            kind: "SelectionSet",
+                                            selections: [
+                                              {
+                                                kind: "Field",
+                                                name: {
+                                                  kind: "Name",
+                                                  value: "trait",
+                                                },
+                                              },
+                                              {
+                                                kind: "Field",
+                                                name: {
+                                                  kind: "Name",
+                                                  value: "value",
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: {
+                                            kind: "Name",
+                                            value: "collection",
+                                          },
+                                          selectionSet: {
+                                            kind: "SelectionSet",
+                                            selections: [
+                                              {
+                                                kind: "Field",
+                                                name: {
+                                                  kind: "Name",
+                                                  value: "id",
+                                                },
+                                              },
+                                              {
+                                                kind: "Field",
+                                                name: {
+                                                  kind: "Name",
+                                                  value: "address",
+                                                },
+                                              },
+                                              {
+                                                kind: "Field",
+                                                name: {
+                                                  kind: "Name",
+                                                  value: "name",
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: {
+                                            kind: "Name",
+                                            value: "compressed",
+                                          },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: {
+                                            kind: "Name",
+                                            value: "image",
+                                          },
+                                        },
+                                        {
+                                          kind: "Field",
+                                          name: { kind: "Name", value: "name" },
+                                        },
+                                      ],
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<
+  GetCollectiblesQuery,
+  GetCollectiblesQueryVariables
 >;
 export const SendFriendRequestDocument = {
   kind: "Document",
@@ -1457,6 +1779,20 @@ export const GetTransactionsDocument = {
           kind: "VariableDefinition",
           variable: {
             kind: "Variable",
+            name: { kind: "Name", value: "providerId" },
+          },
+          type: {
+            kind: "NonNullType",
+            type: {
+              kind: "NamedType",
+              name: { kind: "Name", value: "ProviderID" },
+            },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: {
+            kind: "Variable",
             name: { kind: "Name", value: "filters" },
           },
           type: {
@@ -1485,6 +1821,14 @@ export const GetTransactionsDocument = {
                       value: {
                         kind: "Variable",
                         name: { kind: "Name", value: "address" },
+                      },
+                    },
+                    {
+                      kind: "Argument",
+                      name: { kind: "Name", value: "providerId" },
+                      value: {
+                        kind: "Variable",
+                        name: { kind: "Name", value: "providerId" },
                       },
                     },
                   ],

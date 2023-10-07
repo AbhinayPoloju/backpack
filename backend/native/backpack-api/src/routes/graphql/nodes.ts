@@ -2,6 +2,7 @@ import type {
   Balances,
   Collection,
   Friend,
+  FriendPrimaryWallet,
   FriendRequest,
   Listing,
   MarketData,
@@ -29,6 +30,16 @@ export abstract class NodeBuilder {
 
   static friend(dbId: unknown, data: Omit<Friend, "id">): Friend {
     return this._createNode(`friend:${dbId}`, data);
+  }
+
+  static friendPrimaryWallet(
+    userId: string,
+    data: Omit<FriendPrimaryWallet, "id">
+  ): FriendPrimaryWallet {
+    return this._createNode(
+      `friend_primary_wallet:${userId}:${data.address}`,
+      data
+    );
   }
 
   static friendRequest(
@@ -63,6 +74,14 @@ export abstract class NodeBuilder {
     );
   }
 
+  static nftListing(
+    providerId: ProviderId,
+    address: string,
+    data: Omit<Listing, "id">
+  ): Listing {
+    return this._createNode(`${providerId}_nft_listing:${address}`, data);
+  }
+
   static notification(data: Omit<Notification, "id">): Notification {
     return this._createNode(`notification:${data.dbId}`, data);
   }
@@ -76,10 +95,6 @@ export abstract class NodeBuilder {
 
   static provider(data: Omit<Provider, "id">): Provider {
     return this._createNode(`provider:${data.providerId}`, data);
-  }
-
-  static tensorListing(mint: string, data: Omit<Listing, "id">): Listing {
-    return this._createNode(`tensor_active_listing:${mint}`, data);
   }
 
   static tokenBalance(

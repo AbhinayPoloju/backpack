@@ -13,13 +13,13 @@ import {
   DEFAULT_SOLANA_CLUSTER,
   getLogger,
   InjectedRequestManager,
-  NOTIFICATION_SOLANA_ACTIVE_WALLET_UPDATED,
+  NOTIFICATION_ACTIVE_WALLET_UPDATED,
+  NOTIFICATION_CONNECTION_URL_UPDATED,
   NOTIFICATION_SOLANA_CONNECTED,
-  NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED,
   NOTIFICATION_SOLANA_DISCONNECTED,
   PLUGIN_NOTIFICATION_CONNECT,
+  PLUGIN_NOTIFICATION_CONNECTION_URL_UPDATED,
   PLUGIN_NOTIFICATION_MOUNT,
-  PLUGIN_NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED,
   PLUGIN_NOTIFICATION_SOLANA_PUBLIC_KEY_UPDATED,
   PLUGIN_NOTIFICATION_UNMOUNT,
   PLUGIN_NOTIFICATION_UPDATE_METADATA,
@@ -27,10 +27,6 @@ import {
   SOLANA_RPC_METHOD_DISCONNECT,
   SOLANA_RPC_METHOD_OPEN_XNFT,
 } from "@coral-xyz/common";
-// import {
-//   FromContentScriptTransportSender,
-//   SolanaClient,
-// } from "@coral-xyz/secure-client";
 import type { Provider } from "@project-serum/anchor";
 import type {
   Commitment,
@@ -43,7 +39,6 @@ import type {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { decode, encode } from "bs58";
 
 import { PrivateEventEmitter } from "./common/PrivateEventEmitter";
 import * as cmn from "./common/solana";
@@ -61,7 +56,6 @@ export class ProviderSolanaInjection
   // Channel to send extension specific RPC requests to the extension.
   //
   #backpackRequestManager: InjectedRequestManager;
-  // #secureSolanaClient: SolanaClient;
   #xnftRequestManager: ChainedRequestManager;
 
   #requestManager: InjectedRequestManager | ChainedRequestManager;
@@ -87,15 +81,6 @@ export class ProviderSolanaInjection
       CHANNEL_SOLANA_RPC_REQUEST,
       CHANNEL_SOLANA_RPC_RESPONSE
     );
-
-    // this.#secureSolanaClient = new SolanaClient(
-    //   new FromContentScriptTransportSender(),
-    //   {
-    //     context: "web",
-    //     name: document.title,
-    //     address: window.location.origin,
-    //   }
-    // );
 
     this.#requestManager = this.#backpackRequestManager;
     this.#connectionRequestManager = new InjectedRequestManager(
@@ -139,10 +124,10 @@ export class ProviderSolanaInjection
       case NOTIFICATION_SOLANA_DISCONNECTED:
         this.#handleNotificationDisconnected(event);
         break;
-      case NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED:
+      case NOTIFICATION_CONNECTION_URL_UPDATED:
         this.#handleNotificationConnectionUrlUpdated(event);
         break;
-      case NOTIFICATION_SOLANA_ACTIVE_WALLET_UPDATED:
+      case NOTIFICATION_ACTIVE_WALLET_UPDATED:
         this.#handleNotificationActiveWalletUpdated(event);
         break;
 
@@ -159,7 +144,7 @@ export class ProviderSolanaInjection
       case PLUGIN_NOTIFICATION_UNMOUNT:
         this.#handlePluginUnmount(event);
         break;
-      case PLUGIN_NOTIFICATION_SOLANA_CONNECTION_URL_UPDATED:
+      case PLUGIN_NOTIFICATION_CONNECTION_URL_UPDATED:
         this.#handlePluginConnectionUrlUpdated(event);
         break;
       case PLUGIN_NOTIFICATION_SOLANA_PUBLIC_KEY_UPDATED:
@@ -200,6 +185,9 @@ export class ProviderSolanaInjection
   }
 
   #handlePluginConnectionUrlUpdated(event: Event) {
+    if (event.data.detail.data.blockchain !== Blockchain.SOLANA) {
+      return;
+    }
     const connectionUrl = event.data.detail.data.url;
     this.#connection = new BackgroundSolanaConnection(
       this.#connectionRequestManager,
@@ -234,6 +222,9 @@ export class ProviderSolanaInjection
   }
 
   #handleNotificationConnectionUrlUpdated(event: Event) {
+    if (event.data.detail.data.blockchain !== Blockchain.SOLANA) {
+      return;
+    }
     this.#connection = new BackgroundSolanaConnection(
       this.#connectionRequestManager,
       event.data.detail.data.url
@@ -242,6 +233,9 @@ export class ProviderSolanaInjection
   }
 
   #handleNotificationActiveWalletUpdated(event: Event) {
+    if (event.data.detail.data.blockchain !== Blockchain.SOLANA) {
+      return;
+    }
     this.#publicKey = new PublicKey(event.data.detail.data.activeWallet);
     this.emit("activeWalletDidChange", event.data.detail);
   }
@@ -394,14 +388,6 @@ export class ProviderSolanaInjection
     if (!this.#publicKey) {
       throw new Error("wallet not connected");
     }
-    // const solanaResponse = await this.#secureSolanaClient.signMessage({
-    //   publicKey: (publicKey ?? this.#publicKey).toString(),
-    //   message: encode(msg),
-    // });
-    // if (!solanaResponse) {
-    //   throw new Error("signature failed");
-    // }
-    // return decode(solanaResponse);
     return await cmn.signMessage(
       publicKey ?? this.#publicKey,
       this.#requestManager,

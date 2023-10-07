@@ -76,7 +76,8 @@ export function useAllWalletsPerBlockchain(blockchain: Blockchain): Array<{
 }
 
 export function useAllWallets(): Wallet[] {
-  return useRecoilValue(atoms.allWallets);
+  const wallets = useRecoilValue(atoms.allWallets);
+  return wallets;
 }
 
 export function useAllWalletsDisplayed(): Wallet[] {

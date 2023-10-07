@@ -1,19 +1,19 @@
 import type { ChannelServer } from "@coral-xyz/common";
 import {
   CHANNEL_SECURE_BACKGROUND_REQUEST,
-  CHANNEL_SECURE_BACKGROUND_RESPONSE,
   ChannelContentScript,
 } from "@coral-xyz/common";
 import { TransportResponder } from "@coral-xyz/secure-background/clients";
 import type {
   SECURE_EVENTS,
+  SecureResponseType,
   TransportHandler,
   TransportReceiver,
 } from "@coral-xyz/secure-background/types";
 
 export class FromContentScriptTransportReceiver<
   T extends SECURE_EVENTS = SECURE_EVENTS,
-  R extends "response" | "confirmation" = "response"
+  R extends SecureResponseType = "response"
 > implements TransportReceiver<T, R>
 {
   private server: ChannelServer;

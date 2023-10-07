@@ -89,8 +89,21 @@ export type Friend = Node & {
   avatar: Scalars["String"];
   /** Globally unique identifier for a friend of a user. */
   id: Scalars["ID"];
+  /** The primary wallets associated with the user. */
+  primaryWallets: Array<FriendPrimaryWallet>;
   /** The Backpack username of the friend. */
   username: Scalars["String"];
+};
+
+/** Abbreviated wallet information for the primary wallet(s) of a friend. */
+export type FriendPrimaryWallet = Node & {
+  __typename?: "FriendPrimaryWallet";
+  /** The public key of the wallet. */
+  address: Scalars["String"];
+  /** Globally unique identifier for the friend's primary wallet. */
+  id: Scalars["ID"];
+  /** The ID of the provider associated with the wallet. */
+  provider: Provider;
 };
 
 /** Friend request data for a user. */
@@ -164,8 +177,12 @@ export type Mutation = {
   importPublicKey?: Maybe<Scalars["Boolean"]>;
   /** Set the `viewed` status of the argued notification IDs are `true`. */
   markNotificationsAsRead: Scalars["Int"];
+  /** Deletes a public key registered to the active user account. */
+  removePublicKey: Scalars["Boolean"];
   /** Allows users to send friend requests to another remote user. */
   sendFriendRequest?: Maybe<Scalars["Boolean"]>;
+  /** Set a user's avatar to a new image. */
+  setAvatar: Scalars["Boolean"];
 };
 
 /** Root level mutation type. */
@@ -189,9 +206,21 @@ export type MutationMarkNotificationsAsReadArgs = {
 };
 
 /** Root level mutation type. */
+export type MutationRemovePublicKeyArgs = {
+  address: Scalars["String"];
+  providerId: ProviderId;
+};
+
+/** Root level mutation type. */
 export type MutationSendFriendRequestArgs = {
   accept: Scalars["Boolean"];
   otherUserId: Scalars["String"];
+};
+
+/** Root level mutation type. */
+export type MutationSetAvatarArgs = {
+  nft: Scalars["String"];
+  providerId: ProviderId;
 };
 
 /** Generic NFT object type definition to provide on-chain and off-chain metadata. */
@@ -347,7 +376,9 @@ export type Provider = Node & {
 /** Provider ID enum variants for the supported blockchains or wallet types in the API. */
 export enum ProviderId {
   Bitcoin = "BITCOIN",
+  Eclipse = "ECLIPSE",
   Ethereum = "ETHEREUM",
+  Polygon = "POLYGON",
   Solana = "SOLANA",
 }
 
@@ -544,6 +575,7 @@ export type UserNotificationsArgs = {
  */
 export type UserWalletArgs = {
   address: Scalars["String"];
+  providerId: ProviderId;
 };
 
 /**
@@ -732,6 +764,7 @@ export type ResolversTypes = ResolversObject<{
   Collection: ResolverTypeWrapper<Collection>;
   Float: ResolverTypeWrapper<Scalars["Float"]>;
   Friend: ResolverTypeWrapper<Friend>;
+  FriendPrimaryWallet: ResolverTypeWrapper<FriendPrimaryWallet>;
   FriendRequest: ResolverTypeWrapper<FriendRequest>;
   FriendRequestType: FriendRequestType;
   Friendship: ResolverTypeWrapper<Friendship>;
@@ -751,6 +784,7 @@ export type ResolversTypes = ResolversObject<{
     | ResolversTypes["Balances"]
     | ResolversTypes["Collection"]
     | ResolversTypes["Friend"]
+    | ResolversTypes["FriendPrimaryWallet"]
     | ResolversTypes["FriendRequest"]
     | ResolversTypes["Listing"]
     | ResolversTypes["MarketData"]
@@ -799,6 +833,7 @@ export type ResolversParentTypes = ResolversObject<{
   Collection: Collection;
   Float: Scalars["Float"];
   Friend: Friend;
+  FriendPrimaryWallet: FriendPrimaryWallet;
   FriendRequest: FriendRequest;
   Friendship: Friendship;
   ID: Scalars["ID"];
@@ -817,6 +852,7 @@ export type ResolversParentTypes = ResolversObject<{
     | ResolversParentTypes["Balances"]
     | ResolversParentTypes["Collection"]
     | ResolversParentTypes["Friend"]
+    | ResolversParentTypes["FriendPrimaryWallet"]
     | ResolversParentTypes["FriendRequest"]
     | ResolversParentTypes["Listing"]
     | ResolversParentTypes["MarketData"]
@@ -914,7 +950,22 @@ export type FriendResolvers<
 > = ResolversObject<{
   avatar?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
   id?: Resolver<ResolversTypes["ID"], ParentType, ContextType>;
+  primaryWallets?: Resolver<
+    Array<ResolversTypes["FriendPrimaryWallet"]>,
+    ParentType,
+    ContextType
+  >;
   username?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
+export type FriendPrimaryWalletResolvers<
+  ContextType = any,
+  ParentType extends ResolversParentTypes["FriendPrimaryWallet"] = ResolversParentTypes["FriendPrimaryWallet"]
+> = ResolversObject<{
+  address?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes["ID"], ParentType, ContextType>;
+  provider?: Resolver<ResolversTypes["Provider"], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -1005,11 +1056,23 @@ export type MutationResolvers<
     ContextType,
     RequireFields<MutationMarkNotificationsAsReadArgs, "ids">
   >;
+  removePublicKey?: Resolver<
+    ResolversTypes["Boolean"],
+    ParentType,
+    ContextType,
+    RequireFields<MutationRemovePublicKeyArgs, "address" | "providerId">
+  >;
   sendFriendRequest?: Resolver<
     Maybe<ResolversTypes["Boolean"]>,
     ParentType,
     ContextType,
     RequireFields<MutationSendFriendRequestArgs, "accept" | "otherUserId">
+  >;
+  setAvatar?: Resolver<
+    ResolversTypes["Boolean"],
+    ParentType,
+    ContextType,
+    RequireFields<MutationSetAvatarArgs, "nft" | "providerId">
   >;
 }>;
 
@@ -1084,6 +1147,7 @@ export type NodeResolvers<
     | "Balances"
     | "Collection"
     | "Friend"
+    | "FriendPrimaryWallet"
     | "FriendRequest"
     | "Listing"
     | "MarketData"
@@ -1348,7 +1412,7 @@ export type UserResolvers<
     Maybe<ResolversTypes["Wallet"]>,
     ParentType,
     ContextType,
-    RequireFields<UserWalletArgs, "address">
+    RequireFields<UserWalletArgs, "address" | "providerId">
   >;
   wallets?: Resolver<
     Maybe<ResolversTypes["WalletConnection"]>,
@@ -1416,6 +1480,7 @@ export type Resolvers<ContextType = any> = ResolversObject<{
   Balances?: BalancesResolvers<ContextType>;
   Collection?: CollectionResolvers<ContextType>;
   Friend?: FriendResolvers<ContextType>;
+  FriendPrimaryWallet?: FriendPrimaryWalletResolvers<ContextType>;
   FriendRequest?: FriendRequestResolvers<ContextType>;
   Friendship?: FriendshipResolvers<ContextType>;
   JSONObject?: GraphQLScalarType;
