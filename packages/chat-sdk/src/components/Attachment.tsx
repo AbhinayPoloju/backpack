@@ -1,8 +1,7 @@
-import { LegacyRef, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { BACKEND_API_URL } from "@coral-xyz/common";
 import { useCustomTheme } from "@coral-xyz/themes";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
-import GifIcon from "@mui/icons-material/Gif";
 import { IconButton } from "@mui/material";
 import Tooltip from "@mui/material/Tooltip";
 
@@ -10,29 +9,29 @@ export const Attachment = ({
   buttonStyle,
   onMediaSelect,
 }: {
-  buttonStyle: any;
-  onMediaSelect: any;
+  buttonStyle: React.CSSProperties;
+  onMediaSelect: (file: File) => void;
 }) => {
   const theme = useCustomTheme();
-  const hiddenInputRef = useRef<any>();
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (hiddenInputRef && hiddenInputRef.current) {
+    if (hiddenInputRef.current) {
       hiddenInputRef.current.onchange = () => {
-        const selectedFile = hiddenInputRef.current.files[0];
-        onMediaSelect(selectedFile);
+        const selectedFile = hiddenInputRef.current?.files[0];
+        if (selectedFile) {
+          onMediaSelect(selectedFile);
+        }
       };
     }
-  }, []);
+  }, [onMediaSelect]);
+
+  const handleButtonClick = () => {
+    hiddenInputRef.current?.click();
+  };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        flexDirection: "column",
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "center", flexDirection: "column" }}>
       <IconButton
         size="small"
         sx={{
@@ -42,20 +41,14 @@ export const Attachment = ({
           },
         }}
         style={buttonStyle}
-        onClick={async (e) => {
-          hiddenInputRef.current.click();
-        }}
+        onClick={handleButtonClick}
       >
-        {" "}
         <Tooltip title="Attach">
-          <AttachFileIcon
-            style={{ color: theme.custom.colors.icon, fontSize: 20 }}
-          />
+          <AttachFileIcon style={{ color: theme.custom.colors.icon, fontSize: 20 }} />
         </Tooltip>
         <input
           onClick={(e) => {
-            // @ts-ignore
-            e.target.value = null;
+            e.currentTarget.value = ""; // Clear the file input value on click
           }}
           ref={hiddenInputRef}
           type="file"
