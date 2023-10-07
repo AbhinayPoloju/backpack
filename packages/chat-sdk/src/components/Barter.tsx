@@ -1,7 +1,6 @@
+import { IconButton } from "@mui/material";
 import { BarterIcon } from "@coral-xyz/react-common";
 import { styles, useCustomTheme } from "@coral-xyz/themes";
-import { IconButton } from "@mui/material";
-
 import { useChatContext } from "./ChatContext";
 
 export const useStyles = styles((theme) => ({}));
@@ -10,14 +9,16 @@ export const Barter = ({ buttonStyle }: any) => {
   const theme = useCustomTheme();
   const { setOpenPlugin } = useChatContext();
 
+  const toggleBarterPlugin = () => {
+    setOpenPlugin((prevPlugin) =>
+      prevPlugin.type === "barter"
+        ? { type: "", metadata: {} }
+        : { type: "barter", metadata: {} }
+    );
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        flexDirection: "column",
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "center", flexDirection: "column" }}>
       <IconButton
         size="small"
         sx={{
@@ -27,16 +28,9 @@ export const Barter = ({ buttonStyle }: any) => {
           },
         }}
         style={buttonStyle}
-        onClick={(e) => {
-          setOpenPlugin((p) =>
-            p.type === "barter"
-              ? { type: "", metadata: {} }
-              : { type: "barter", metadata: {} }
-          );
-        }}
+        onClick={toggleBarterPlugin}
       >
-        {" "}
-        <BarterIcon fill={theme.custom.colors.icon} />{" "}
+        <BarterIcon fill={theme.custom.colors.icon} />
       </IconButton>
     </div>
   );
